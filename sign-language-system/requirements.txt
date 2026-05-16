@@ -2,5 +2,6 @@ streamlit
 opencv-python
 mediapipe
 torch
+torchvision
 numpy
 pillow
