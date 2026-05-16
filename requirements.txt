@@ -1,7 +1,4 @@
 streamlit
-opencv-python
+opencv-python-headless
 mediapipe
-torch
-torchvision
 numpy
-pillow
