@@ -1,5 +1,4 @@
 import streamlit as st
-import cv2
 import numpy as np
 import mediapipe as mp
 from collections import deque
@@ -104,34 +103,44 @@ else:
     win = st.empty()
 
     if run:
-        cap = cv2.VideoCapture(0)
-        with mp_hands.Hands(
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.7,
-            max_num_hands=1
-        ) as hands:
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
+        # 改用streamlit内置的摄像头组件，绕过cv2的依赖问题
+        from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+        import av
 
-                frame = cv2.flip(frame, 1)
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                rgb.flags.writeable = False
-                res = hands.process(rgb)
+        RTC_CONFIGURATION = RTCConfiguration(
+            {"iceServers": [{"urls": ["st:turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:80?transport=udp", "turn:openrelay.metered.ca:3478", "turn:openrelay.metered.ca:3478?transport=udp", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp", "turns:openrelay.metered.ca:443", "turns:openrelay.metered.ca:443?transport=tcp"]}]}
+        )
 
+        class VideoProcessor:
+            def recv(self, frame):
+                img = frame.to_ndarray(format="bgr24")
+                img = np.fliplr(img)
+                rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                with mp_hands.Hands(
+                    min_detection_confidence=0.7,
+                    min_tracking_confidence=0.7,
+                    max_num_hands=1
+                ) as hands:
+                    res = hands.process(rgb)
                 if res.multi_hand_landmarks:
                     for h in res.multi_hand_landmarks:
                         points = [
                             [lm.x, lm.y, lm.z] for lm in h.landmark
                         ]
-                        points_history.append(points)
                         g = recognize_gesture(points)
-                        cv2.putText(frame, g, (50, 100),
+                        cv2.putText(img, g, (50, 100),
                                     cv2.FONT_HERSHEY_SIMPLEX,
                                     2, (0, 255, 0), 3)
-                        mp_drawing.draw_landmarks(frame, h, mp_hands.HAND_CONNECTIONS)
+                        mp_drawing.draw_landmarks(img, h, mp_hands.HAND_CONNECTIONS)
+                return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-                win.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        webrtc_streamer(
+            key="example",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIGURATION,
+            video_processor_factory=VideoProcessor,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+        )
     else:
-        cap = None
+        st.info("请点击上方开关开启摄像头")
